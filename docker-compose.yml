@@ -1,0 +1,84 @@
+services:
+  aiefs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RUST_VERSION: "1.82.0"
+        NODE_VERSION: "24"
+        UID: "1000"
+        GID: "1000"
+        # Leave empty (default) on macOS/Apple Silicon and on Linux/Windows
+        # hosts with no NVIDIA GPU. On a Linux host WITH an NVIDIA GPU, set:
+        #   TORCH_INDEX_URL: "https://download.pytorch.org/whl/cu124"
+        TORCH_INDEX_URL: ""
+    image: aiefs:latest
+    container_name: aiefs
+    user: "1000:1000"
+    working_dir: /home/learner/app
+    stdin_open: true # keep an interactive shell usable
+    tty: true
+
+    # --- Security hardening --------------------------------------------
+    security_opt:
+      - no-new-privileges:true # blocks setuid/setgid privilege escalation
+    cap_drop:
+      - ALL # no Linux capabilities beyond the default
+    pids_limit: 512 # fork-bomb / runaway-process protection
+    # mem_limit: 4g
+    # cpus: "2.0"
+
+    # --- GPU passthrough (Linux hosts with an NVIDIA GPU only) -----------
+    # Does nothing on macOS/Apple Silicon — Metal cannot be passed through
+    # to a Linux container regardless of this block (see the GPU comment
+    # in Dockerfile / DOCKER_README.md). On a Linux host with an NVIDIA GPU
+    # and the NVIDIA Container Toolkit installed, uncomment this AND build
+    # with TORCH_INDEX_URL set to the cu124 wheel index above:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+    # --- Networking -------------------------------------------------------
+    # No ports are published by default: lesson code runs locally and does
+    # not need to be reachable from the host network. Uncomment only if you
+    # are running the web/ site's dev server (e.g. `npm run dev` in web/).
+    # ports:
+    #   - "127.0.0.1:3000:3000"
+    networks:
+      - aiefs-net
+
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      # Provide API keys at run time only (Phase 0, lesson 04); never bake
+      # secrets into the image. Example:
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+    # Lesson progress files (LEARNING.md, MCP-LEARNING.md, quiz state, and
+    # any generated outputs/) persist on the host through this bind mount
+    # instead of living only inside the writable container layer.
+    volumes:
+      - .:/home/learner/app:rw
+
+networks:
+  aiefs-net:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Stricter, read-only variant
+# ---------------------------------------------------------------------------
+# For running lessons that don't need to write to the repo tree (most
+# "Learn"-type lessons, or CI), you can lock the root filesystem down further.
+# This is NOT the default because several lessons (Rust `cargo build`,
+# `scripts/install_skills.py`, progress files) need to write into the repo.
+# To use it, add to the service above:
+#
+#   read_only: true
+#   tmpfs:
+#     - /tmp:rw,noexec,nosuid,size=512m
+#     - /home/learner/.cache:rw,noexec,nosuid,size=256m
+#     - /home/learner/.cargo/registry:rw,noexec,nosuid,size=512m

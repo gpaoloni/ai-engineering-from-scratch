@@ -1,0 +1,36 @@
+# Version control
+.git
+.github
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/.uv/
+
+# Node version manager state (installed fresh inside the image)
+**/.nvm/
+
+# Node
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+
+# Rust
+**/target/
+
+# Local secrets / env files — never bake these into an image
+.env
+.env.*
+*.pem
+*.key
+
+# Editor/OS cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Generated books (large, rebuilt by CI; not needed to run lessons)
+book/dist/
