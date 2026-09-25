@@ -86,7 +86,7 @@ pip install torch torchvision torchaudio
 python -c "import torch; print(torch.cuda.get_device_name(0))"
 ```
 
-### No GPU? No problem.
+### No GPU? No problem
 
 Most lessons work on CPU. The ones that need GPU will say so and include Colab links.
 
@@ -128,13 +128,34 @@ if torch.cuda.is_available():
 
 1. Run the benchmark above and compare CPU vs GPU times
 2. If you don't have a GPU, run it on Google Colab and compare
-3. Check how much GPU memory you have and estimate the largest model you can fit (rule of thumb: 2 bytes per parameter for fp16)
+
+```
+
+  === GPU Check ===
+
+  PyTorch version: 2.11.0+cu128
+  CUDA available: True
+  CUDA version: 12.8
+  GPU: Tesla T4
+  Memory: 15.6 GB
+  Compute capability: 7.5
+
+  === CPU vs GPU Benchmark ===
+
+  CPU matrix multiply (4000x4000): 1.526s
+  GPU matrix multiply (4000x4000): 0.185s
+  Speedup: 8x
+
+  Estimated max model size (fp16): ~8B parameters
+```
+
+1. Check how much GPU memory you have and estimate the largest model you can fit (rule of thumb: 2 bytes per parameter for fp16)
 
 ## Key Terms
 
-| Term | What people say | What it actually means |
-|------|----------------|----------------------|
-| CUDA | "GPU programming" | NVIDIA's parallel computing platform that lets you run code on the GPU |
-| VRAM | "GPU memory" | Video RAM on the GPU, separate from system RAM. Limits model size. |
-| fp16 | "Half precision" | 16-bit floating point, uses half the memory of fp32 with minimal accuracy loss |
+| Term        | What people say        | What it actually means                                                          |
+| ----------- | ---------------------- | ------------------------------------------------------------------------------- |
+| CUDA        | "GPU programming"      | NVIDIA's parallel computing platform that lets you run code on the GPU          |
+| VRAM        | "GPU memory"           | Video RAM on the GPU, separate from system RAM. Limits model size.              |
+| fp16        | "Half precision"       | 16-bit floating point, uses half the memory of fp32 with minimal accuracy loss  |
 | Tensor Core | "Fast matrix hardware" | Specialized GPU cores for matrix multiplication, 4-8x faster than regular cores |
