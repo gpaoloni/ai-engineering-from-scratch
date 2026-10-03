@@ -8,9 +8,8 @@
 **/.venv/
 **/venv/
 **/.uv/
-
-# Node version manager state (installed fresh inside the image)
-**/.nvm/
++**/.ipynb_checkpoints/
++**/.jupyter/
 
 # Node
 **/node_modules/

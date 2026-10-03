@@ -46,32 +46,16 @@ curriculum's lessons need.
 ## Python via uv
 
 The image bakes in exactly the workflow you'd run by hand:
-
-```
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv python install 3.12
-uv venv                      # creates .venv at /home/learner/app/.venv
-uv pip install -r requirements.txt
-```
-
 `VIRTUAL_ENV` and `PATH` are set at the image level, so every `RUN`/shell
 already has `.venv` active — no manual `source .venv/bin/activate` needed
 inside the container. To add packages ad hoc: `uv pip install numpy matplotlib jupyter`.
 
-## Node via nvm
+## Jupyer (.ipynb)
 
 ```
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
-nvm install 24
-nvm alias default 24
+export JUPYTER_TOKEN=$(openssl rand -hex 24)
+docker compose --profile jupyter up jupyter
 ```
-
-Because `nvm` is a shell function (not a binary), it's sourced once at
-build time and the resulting Node 24 install is exposed through a stable
-`$NVM_DIR/current` symlink added to `PATH` — so you get `node`/`npm` on
-`PATH` in the running container without needing to source `nvm.sh` every
-time. `nvm` itself is still there if you want another version:
-`. "$NVM_DIR/nvm.sh" && nvm install <version>`.
 
 ## GPU support — read this, especially on Apple Silicon
 

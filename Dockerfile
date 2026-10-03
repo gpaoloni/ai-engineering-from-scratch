@@ -61,55 +61,28 @@ USER learner
 WORKDIR /home/learner/app
 
 # ---------------------------------------------------------------------------
-# uv + Python 3.12 (uv installs and manages its own standalone Python build,
-# so no system python3/pip/venv package is needed at all).
+# Node.js — pinned exact version as an official prebuilt tarball, verified
+# against Node's published SHASUMS256.txt. One deterministic download per
+# architecture and nothing else touches the network here, so this layer
+# stays cached across rebuilds instead of re-fetching on every build.
 # ---------------------------------------------------------------------------
-ENV PATH="/home/learner/.local/bin:$PATH"
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-RUN uv python install 3.12
-
-# uv-managed virtualenv, created inside the project directory, same as the
-# `uv venv` / `source .venv/bin/activate` workflow you'd run by hand.
-RUN uv venv --python 3.12 .venv
-ENV VIRTUAL_ENV=/home/learner/app/.venv \
-  PATH=/home/learner/app/.venv/bin:$PATH
-
-COPY --chown=learner:learner requirements.txt ./
-RUN uv pip install -r requirements.txt
-
-# ---------------------------------------------------------------------------
-# GPU / PyTorch (see the long comment near the bottom of this file).
-#
-# Default build = the plain PyPI build (works everywhere, includes Apple's
-# MPS backend in the wheel itself — irrelevant here since a Linux container
-# can't reach Metal, but harmless).
-#
-# On a Linux host with an NVIDIA GPU, rebuild with:
-#   docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
-# ---------------------------------------------------------------------------
-ARG TORCH_INDEX_URL=""
-RUN if [ -n "${TORCH_INDEX_URL}" ]; then \
-  uv pip install torch torchvision torchaudio --index-url "${TORCH_INDEX_URL}"; \
-  else \
-  uv pip install torch torchvision torchaudio; \
-  fi
-
-# ---------------------------------------------------------------------------
-# Node.js via nvm, pinned to a single major version. nvm itself is a shell
-# function, not a binary, so we source nvm.sh once per RUN and then expose
-# the installed version through a stable "current" symlink so later layers
-# and the running container just need it on PATH — no sourcing required.
-# ---------------------------------------------------------------------------
-ENV NVM_DIR="/home/learner/.nvm"
 ARG NODE_VERSION
-RUN mkdir -p "$NVM_DIR" \
-  && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash \
-  && . "$NVM_DIR/nvm.sh" \
-  && nvm install "${NODE_VERSION}" \
-  && nvm alias default "${NODE_VERSION}" \
-  && ln -sfn "$NVM_DIR/versions/node/$(nvm version "${NODE_VERSION}")" "$NVM_DIR/current"
-ENV PATH="$NVM_DIR/current/bin:$PATH"
+ARG TARGETARCH
+ENV NODE_HOME=/home/learner/node
+RUN set -eux; \
+  case "${TARGETARCH}" in \
+  amd64) NODE_ARCH="x64" ;; \
+  arm64) NODE_ARCH="arm64" ;; \
+  *) echo "Unsupported or unset TARGETARCH='${TARGETARCH}' — pass --build-arg TARGETARCH=amd64|arm64 explicitly if your builder doesn't set it." >&2; exit 1 ;; \
+  esac; \
+  NODE_TARBALL="node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"; \
+  curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}"; \
+  curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"; \
+  grep " ${NODE_TARBALL}\$" SHASUMS256.txt | sha256sum -c -; \
+  mkdir -p "${NODE_HOME}"; \
+  tar -xJf "${NODE_TARBALL}" -C "${NODE_HOME}" --strip-components=1; \
+  rm -f "${NODE_TARBALL}" SHASUMS256.txt
+ENV PATH="${NODE_HOME}/bin:$PATH"
 RUN node --version && npm --version
 
 # ---------------------------------------------------------------------------
@@ -129,6 +102,48 @@ RUN set -eux; \
   --no-modify-path; \
   rm -f /tmp/rustup-init.sh; \
   rustup component add clippy rustfmt
+
+# ---------------------------------------------------------------------------
+# uv + Python 3.12 (uv installs and manages its own standalone Python build,
+# so no system python3/pip/venv package is needed at all).
+# ---------------------------------------------------------------------------
+ENV PATH="/home/learner/.local/bin:$PATH"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+RUN uv python install 3.12
+
+# uv-managed virtualenv, created inside the project directory, same as the
+# `uv venv` / `source .venv/bin/activate` workflow you'd run by hand.
+RUN uv venv --python 3.12 /home/learner/venv
+ENV VIRTUAL_ENV=/home/learner/venv \
+  PATH=/home/learner/venv/bin:$PATH
+
+COPY --chown=learner:learner requirements.txt ./
+RUN uv pip install -r requirements.txt
+RUN echo 'alias python3="/home/learner/.local/bin/python3.12"' >> ~/.zshrc
+# JupyterLab + a kernel that points at this exact venv, so notebooks opened
+# in the browser run their code inside this container, not on your host.
+RUN uv pip install jupyterlab ipykernel \
+  && python -m ipykernel install --user \
+  --name aiefs \
+  --display-name "ai-engineering-from-scratch (.venv)"
+
+# ---------------------------------------------------------------------------
+# GPU / PyTorch (see the long comment near the bottom of this file).
+#
+# Default build = the plain PyPI build (works everywhere, includes Apple's
+# MPS backend in the wheel itself — irrelevant here since a Linux container
+# can't reach Metal, but harmless).
+#
+# On a Linux host with an NVIDIA GPU, rebuild with:
+#   docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+# ---------------------------------------------------------------------------
+ARG TORCH_INDEX_URL=""
+RUN if [ -n "${TORCH_INDEX_URL}" ]; then \
+  uv pip install torch torchvision torchaudio --index-url "${TORCH_INDEX_URL}"; \
+  else \
+  uv pip install torch torchvision torchaudio; \
+  fi
 
 # ---------------------------------------------------------------------------
 # Repository source.
@@ -155,6 +170,8 @@ COPY --chown=learner:learner . .
 # ---------------------------------------------------------------------------
 COPY --chown=learner:learner entrypoint.sh /home/learner/entrypoint.sh
 RUN chmod +x /home/learner/entrypoint.sh
+
+EXPOSE 8888
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/home/learner/entrypoint.sh"]
 CMD ["bash"]
