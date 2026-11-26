@@ -8,6 +8,9 @@ Node resolve to their **latest** releases at build time; Rust is pinned via the
 
 ## Setup
 
+Run `make help` to list the shortcuts. Each one is a thin wrapper around a
+`docker compose` command, shown in the `Makefile`.
+
 1. Clone the repo:
 
    ```bash
@@ -18,13 +21,13 @@ Node resolve to their **latest** releases at build time; Rust is pinned via the
 2. Build:
 
    ```bash
-   docker compose build
+   make build
    ```
 
 3. Run an interactive shell:
 
    ```bash
-   docker compose run --rm aiefs
+   make run
    ```
 
    You'll land in `/home/learner/app` (a bind mount of the repo) as the
@@ -67,11 +70,11 @@ image level, so the venv is already active in every shell — no
 ## Jupyter (.ipynb)
 
 ```bash
-export JUPYTER_TOKEN=$(openssl rand -hex 24)
-docker compose --profile jupyter up jupyter
+make jupyter
 ```
 
-Open `http://127.0.0.1:8888/?token=$JUPYTER_TOKEN`. The port is published on
+It uses `JUPYTER_TOKEN` if you've exported one, otherwise it generates a
+random token, and prints the URL to open. The port is published on
 `127.0.0.1` only, and the service refuses to start without a token. Pick the
 "ai-engineering-from-scratch (venv)" kernel so notebooks run inside the
 container.
@@ -208,7 +211,7 @@ ENV PATH=/home/learner/julia-${JULIA_VERSION}/bin:$PATH
 ## Rebuilding
 
 ```bash
-docker compose build
+make build
 ```
 
 Changes to `requirements.txt` invalidate its layer, so a normal build picks
@@ -216,5 +219,5 @@ them up. Docker caches the Python and Node download layers, though, so a
 normal build will **not** fetch newer Python/Node releases. To upgrade them:
 
 ```bash
-docker compose build --no-cache
+make rebuild
 ```
