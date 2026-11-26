@@ -5,15 +5,13 @@ services:
       dockerfile: Dockerfile
       args:
         RUST_VERSION: "1.82.0"
-        NODE_VERSION: "24.21.0"
         UID: "1000"
         GID: "1000"
         # Leave empty (default) on macOS/Apple Silicon and on Linux/Windows
         # hosts with no NVIDIA GPU. On a Linux host WITH an NVIDIA GPU, set:
-        #   TORCH_INDEX_URL: "https://download.pytorch.org/whl/cu124"
+        #   TORCH_INDEX_URL: "https://download.pytorch.org/whl/cu128"
         TORCH_INDEX_URL: ""
     image: aiefs:latest
-    container_name: aiefs
     user: "1000:1000"
     working_dir: /home/learner/app
     stdin_open: true # keep an interactive shell usable
@@ -23,17 +21,19 @@ services:
     security_opt:
       - no-new-privileges:true # blocks setuid/setgid privilege escalation
     cap_drop:
-      - ALL # no Linux capabilities beyond the default
+      - ALL # drop every Linux capability, including Docker's defaults
     pids_limit: 512 # fork-bomb / runaway-process protection
-    # mem_limit: 4g
-    # cpus: "2.0"
+    # Caps a runaway training loop so it cannot exhaust the host. Raise these
+    # if a lesson needs more; `cpus` must not exceed the cores Docker can see.
+    mem_limit: 4g
+    cpus: "2.0"
 
     # --- GPU passthrough (Linux hosts with an NVIDIA GPU only) -----------
     # Does nothing on macOS/Apple Silicon — Metal cannot be passed through
     # to a Linux container regardless of this block (see the GPU comment
-    # in Dockerfile / DOCKER_README.md). On a Linux host with an NVIDIA GPU
+    # in Dockerfile / DOCKER.md). On a Linux host with an NVIDIA GPU
     # and the NVIDIA Container Toolkit installed, uncomment this AND build
-    # with TORCH_INDEX_URL set to the cu124 wheel index above:
+    # with TORCH_INDEX_URL set to the cu128 wheel index above:
     # deploy:
     #   resources:
     #     reservations:
@@ -61,8 +61,14 @@ services:
     # Lesson progress files (LEARNING.md, MCP-LEARNING.md, quiz state, and
     # any generated outputs/) persist on the host through this bind mount
     # instead of living only inside the writable container layer.
+    #
+    # .git is re-mounted read-only on top: lesson code (or an AI agent)
+    # running in here can read history but cannot plant git hooks or rewrite
+    # refs that would later execute or take effect on the host. Commit from
+    # the host, not from inside the container.
     volumes:
       - .:/home/learner/app:rw
+      - ./.git:/home/learner/app/.git:ro
 
   jupyter:
     extends:
