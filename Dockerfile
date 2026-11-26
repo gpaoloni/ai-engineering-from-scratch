@@ -110,7 +110,12 @@ RUN set -eux; \
 ENV PATH="/home/learner/.local/bin:$PATH"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# uv python install alone does not put python3 on PATH; symlink it explicitly
+# rather than relying on uv's --default flag, whose behavior varies by version.
 RUN uv python install 3.12
+# RUN uv python install 3.13 \
+#  && ln -sf "$(uv python find 3.13)" /home/dev/.local/bin/python3 \
+#  && ln -sf "$(uv python find 3.13)" /home/dev/.local/bin/python
 
 # uv-managed virtualenv, created inside the project directory, same as the
 # `uv venv` / `source .venv/bin/activate` workflow you'd run by hand.
