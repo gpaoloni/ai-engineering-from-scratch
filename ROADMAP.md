@@ -16,7 +16,7 @@ Total estimated time: ~323 hours, at your own pace.
 | 02  | Git & Collaboration   | ✅     | ~45 min |
 | 03  | GPU Setup & Cloud     | ✅     | ~75 min |
 | 04  | APIs & Keys           | ✅     | ~75 min |
-| 05  | Jupyter Notebooks     | ⬚      | ~75 min |
+| 05  | Jupyter Notebooks     | ✅     | ~75 min |
 | 06  | Python Environments   | ⬚      | ~75 min |
 | 07  | Docker for AI         | ⬚      | ~75 min |
 | 08  | Editor Setup          | ⬚      | ~75 min |

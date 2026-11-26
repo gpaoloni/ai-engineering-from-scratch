@@ -81,7 +81,12 @@ services:
       --port=8888
       --no-browser
       --ServerApp.root_dir=/home/learner/app
-      --ServerApp.token=${JUPYTER_TOKEN:?Set JUPYTER_TOKEN before starting the jupyter service}
+    # Jupyter reads JUPYTER_TOKEN from its environment; if it's unset, Jupyter
+    # generates a random token and prints it in the log. Don't interpolate it
+    # into `command`: compose resolves variables for every service, profiled
+    # or not, so a required variable here breaks `build` and `run` too.
+    environment:
+      - JUPYTER_TOKEN
     profiles: ["jupyter"]
 
 networks:
