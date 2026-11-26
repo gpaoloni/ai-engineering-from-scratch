@@ -2,21 +2,18 @@
 ###############################################################################
 # ai-engineering-from-scratch — secure, multi-language learning environment
 #
-# Python via uv (uv-managed Python 3.12, uv-managed venv, uv pip installs)
-# Node via nvm (pinned to Node 24)
+# Python via uv (latest stable CPython at build time, uv-managed venv)
+# Node from the official tarball (latest release at build time, checksum-verified)
 # Rust via rustup (pinned version)
 #
-# Build (run from inside a clone of the repo, next to this Dockerfile):
-#   git clone https://github.com/rohitg00/ai-engineering-from-scratch.git
-#   cp Dockerfile docker-compose.yml .dockerignore entrypoint.sh ai-engineering-from-scratch/
-#   cd ai-engineering-from-scratch
+# Build (from the repo root):
 #   docker compose build
 #
 # Run:
 #   docker compose run --rm aiefs
 #
 # GPU note (read before building on Apple Silicon): see the GPU section
-# near the bottom of this file and DOCKER_README.md. Short version — on a
+# near the bottom of this file and DOCKER.md. Short version — on a
 # Mac, this Linux container cannot reach the Metal/MPS GPU no matter how
 # this Dockerfile is written; that's a virtualization boundary, not a
 # missing flag. CUDA only applies on Linux/Windows hosts with an NVIDIA GPU.
@@ -24,7 +21,6 @@
 
 ARG DEBIAN_VERSION=bookworm-slim
 ARG RUST_VERSION=1.82.0
-ARG NODE_VERSION=24
 ARG UID=1000
 ARG GID=1000
 
@@ -32,9 +28,9 @@ FROM debian:${DEBIAN_VERSION} AS base
 SHELL ["/bin/bash", "-c"]
 
 # ---------------------------------------------------------------------------
-# OS packages: minimal set, pinned, no recommended extras, apt cache purged
-# in the same layer so it never ends up in an image layer. Neither Python
-# nor Node come from apt anymore — uv and nvm manage those, pinned below.
+# OS packages: minimal set, no recommended extras, apt cache purged in the
+# same layer so it never ends up in an image layer. Neither Python nor Node
+# come from apt — uv and the official Node tarball provide those below.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
   apt-get update; \
@@ -61,12 +57,10 @@ USER learner
 WORKDIR /home/learner/app
 
 # ---------------------------------------------------------------------------
-# Node.js — pinned exact version as an official prebuilt tarball, verified
-# against Node's published SHASUMS256.txt. One deterministic download per
-# architecture and nothing else touches the network here, so this layer
-# stays cached across rebuilds instead of re-fetching on every build.
+# Node.js — latest release at build time, official prebuilt tarball,
+# verified against Node's published SHASUMS256.txt. Docker caches this
+# layer, so run `docker compose build --no-cache` to pick up a newer Node.
 # ---------------------------------------------------------------------------
-ARG NODE_VERSION
 ARG TARGETARCH
 ENV NODE_HOME=/home/learner/node
 RUN set -eux; \
@@ -75,9 +69,10 @@ RUN set -eux; \
   arm64) NODE_ARCH="arm64" ;; \
   *) echo "Unsupported or unset TARGETARCH='${TARGETARCH}' — pass --build-arg TARGETARCH=amd64|arm64 explicitly if your builder doesn't set it." >&2; exit 1 ;; \
   esac; \
-  NODE_TARBALL="node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"; \
-  curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}"; \
-  curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"; \
+  NODE_DIST="https://nodejs.org/dist/latest"; \
+  curl -fsSLO "${NODE_DIST}/SHASUMS256.txt"; \
+  NODE_TARBALL="$(grep -oE "node-v[0-9.]+-linux-${NODE_ARCH}\.tar\.xz" SHASUMS256.txt | head -n1)"; \
+  curl -fsSLO "${NODE_DIST}/${NODE_TARBALL}"; \
   grep " ${NODE_TARBALL}\$" SHASUMS256.txt | sha256sum -c -; \
   mkdir -p "${NODE_HOME}"; \
   tar -xJf "${NODE_TARBALL}" -C "${NODE_HOME}" --strip-components=1; \
@@ -104,44 +99,33 @@ RUN set -eux; \
   rustup component add clippy rustfmt
 
 # ---------------------------------------------------------------------------
-# uv + Python 3.12 (uv installs and manages its own standalone Python build,
-# so no system python3/pip/venv package is needed at all).
+# uv + Python (uv installs and manages its own standalone Python build, so
+# no system python3/pip/venv package is needed at all). `uv python install`
+# with no version picks the latest stable CPython at build time.
 # ---------------------------------------------------------------------------
 ENV PATH="/home/learner/.local/bin:$PATH"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN uv python install
 
-# uv python install alone does not put python3 on PATH; symlink it explicitly
-# rather than relying on uv's --default flag, whose behavior varies by version.
-RUN uv python install 3.12
-# RUN uv python install 3.13 \
-#  && ln -sf "$(uv python find 3.13)" /home/dev/.local/bin/python3 \
-#  && ln -sf "$(uv python find 3.13)" /home/dev/.local/bin/python
-
-# uv-managed virtualenv, created inside the project directory, same as the
-# `uv venv` / `source .venv/bin/activate` workflow you'd run by hand.
-RUN uv venv --python 3.12 /home/learner/venv
+# uv-managed virtualenv outside the bind-mounted repo, so it survives the
+# mount and never lands in your working tree. Activated via ENV below.
+RUN uv venv /home/learner/venv
 ENV VIRTUAL_ENV=/home/learner/venv \
   PATH=/home/learner/venv/bin:$PATH
-
-COPY --chown=learner:learner requirements.txt ./
-RUN uv pip install -r requirements.txt
-RUN echo 'alias python3="/home/learner/.local/bin/python3.12"' >> ~/.zshrc
-# JupyterLab + a kernel that points at this exact venv, so notebooks opened
-# in the browser run their code inside this container, not on your host.
-RUN uv pip install jupyterlab ipykernel \
-  && python -m ipykernel install --user \
-  --name aiefs \
-  --display-name "ai-engineering-from-scratch (.venv)"
 
 # ---------------------------------------------------------------------------
 # GPU / PyTorch (see the long comment near the bottom of this file).
 #
-# Default build = the plain PyPI build (works everywhere, includes Apple's
-# MPS backend in the wheel itself — irrelevant here since a Linux container
-# can't reach Metal, but harmless).
+# Installed BEFORE requirements.txt: requirements.txt also lists torch, and
+# uv skips packages that are already satisfied, so whichever build lands
+# first wins. Doing it here is what lets TORCH_INDEX_URL take effect.
+#
+# Default build = the plain PyPI build.
 #
 # On a Linux host with an NVIDIA GPU, rebuild with:
-#   docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+#   docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+# On an amd64 host without a GPU, the CPU index avoids GBs of CUDA wheels:
+#   docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 # ---------------------------------------------------------------------------
 ARG TORCH_INDEX_URL=""
 RUN if [ -n "${TORCH_INDEX_URL}" ]; then \
@@ -149,6 +133,15 @@ RUN if [ -n "${TORCH_INDEX_URL}" ]; then \
   else \
   uv pip install torch torchvision torchaudio; \
   fi
+
+COPY --chown=learner:learner requirements.txt ./
+RUN uv pip install -r requirements.txt
+# JupyterLab + a kernel that points at this exact venv, so notebooks opened
+# in the browser run their code inside this container, not on your host.
+RUN uv pip install jupyterlab ipykernel \
+  && python -m ipykernel install --user \
+  --name aiefs \
+  --display-name "ai-engineering-from-scratch (venv)"
 
 # ---------------------------------------------------------------------------
 # Repository source.
@@ -188,7 +181,7 @@ CMD ["bash"]
 #   1. Install the NVIDIA driver + NVIDIA Container Toolkit on the HOST
 #      (not in this image).
 #   2. Build with the CUDA wheel index:
-#        docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+#        docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
 #   3. Run with the GPU attached — either `docker run --gpus all ...` or the
 #      commented `deploy.resources.reservations.devices` block in
 #      docker-compose.yml.
