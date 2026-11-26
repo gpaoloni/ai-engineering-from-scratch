@@ -75,7 +75,9 @@ make jupyter
 
 It uses `JUPYTER_TOKEN` if you've exported one, otherwise it generates a
 random token, and prints the URL to open. The port is published on
-`127.0.0.1` only, and the service refuses to start without a token. Pick the
+`127.0.0.1` only. Running `docker compose --profile jupyter up jupyter`
+directly without a token also works: Jupyter generates one and prints it in the
+log. Pick the
 "ai-engineering-from-scratch (venv)" kernel so notebooks run inside the
 container.
 
